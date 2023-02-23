@@ -74,10 +74,10 @@ class State:
 
         # If any pitcher contains the amount required to reach target, it is the penultimate state
         if remaining in self.water_state[1:-1]:
-            return -1
+            return -np.inf
         else:
             # Main Heuristic: |required_target - (water in target pitcher + pitcher with max water)|
-            x = abs(njugs.target - (self.water_state[-1] + max(self.water_state[1:-1]))) + self.depth
+            x = abs(njugs.target - (self.water_state[-1] + max(self.water_state[1:-1])))
             if prev_final_ptcher < current_final_ptcher and current_final_ptcher < target:
                 x += 0.1
             else:
