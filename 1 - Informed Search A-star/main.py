@@ -4,6 +4,7 @@ import numpy as np
 import itertools
 from copy import copy
 from heapq import heappush, heappop
+import cv2
 
 
 class PriorityQueue:
@@ -31,7 +32,9 @@ class PriorityQueue:
 
 class State:
     def __init__(self, prev_state=None, water_state=None):
-        if prev_state is not None: self.prev_state = prev_state.water_state
+        if prev_state is not None:
+            self.prev_state = prev_state.water_state
+            self.prev_state_heuristic = prev_state.heuristic
 
         if water_state is None:
             raise ValueError("Invalid Water State")
@@ -62,7 +65,9 @@ class State:
         current_final_ptcher = self.water_state[-1]
         prev_final_ptcher = self.prev_state[-1]
         remaining = target - self.water_state[-1]
+        max_cap = njugs.max_capacities.copy()
         total_pitcher_capacity = sum(njugs.max_capacities[1:-1])
+        num_j = len(self.water_state)
 
         # If water in all pitchers are full and target pitcher is greater than target, no solution can be reached
         if sum(self.water_state[1:]) > total_pitcher_capacity + target:
@@ -72,18 +77,39 @@ class State:
         if self.water_state[-1] == njugs.target:
             return -np.inf
 
+        if self.water_state[-1] > njugs.target:
+            return np.inf
+
         # If any pitcher contains the amount required to reach target, it is the penultimate state
         if remaining in self.water_state[1:-1]:
             return -np.inf
         else:
-            # Main Heuristic: |required_target - (water in target pitcher + pitcher with max water)|
-            x = abs(njugs.target - (self.water_state[-1] + max(self.water_state[1:-1])))
-            if prev_final_ptcher < current_final_ptcher and current_final_ptcher < target:
-                x += 0.1
-            else:
-                x += 0.2
+            if remaining < max_cap[-2]:
+                return self.prev_state_heuristic+self.depth
 
-            return x
+            h0 = 0
+            for i in range(num_j - 2, 0, -1):
+                if remaining % max_cap[i] == 0:
+                    if self.water_state[i] == max_cap[i] and self.prev_state == 0:
+                        h0 += (remaining // max_cap[i]) * 2
+                    elif self.water_state[i] == 0 and current_final_ptcher-prev_final_ptcher == max_cap[i]:
+                        h0 += ((remaining // max_cap[i]) * 2)-1
+                        break
+
+            h = 0
+            for i in range(num_j - 2, 0, -1):
+                if remaining > max_cap[i] and self.water_state[i] == max_cap[i] and current_final_ptcher <= target:
+                    h += ((remaining // max_cap[i]) * 2)
+                    remaining = remaining % max_cap[i]
+                    if current_final_ptcher > prev_final_ptcher:
+                        h+=1
+
+
+            return max(h0,h) + self.depth
+
+
+
+
 
 
 
@@ -123,6 +149,12 @@ class NJugs():
         ls = range(self.NUM_JUGS + 2)
         self.moves_list = [t for t in (itertools.product(ls, ls)) if t[0] != t[1]]
 
+        ls = range(self.NUM_JUGS + 2)
+        self.moves_list = self.moves_list + [(t, -1) for t in ls]
+
+        self.moves_list.remove((0, -1))
+        self.moves_list.remove((self.NUM_JUGS+1, -1))
+
         # infinity = source
         # cannot transfer from infinity to target
         self.moves_list.remove((0, self.NUM_JUGS + 1))
@@ -142,7 +174,9 @@ class NJugs():
             if state[i] == 0:
                 self.moves_list = [x for x in self.moves_list if x[0] != i]
 
-        # print(self.moves_list)
+        # print(state)
+
+
 
     def is_legal_state(self, state):
         state_l = copy(state.water_state)
@@ -174,6 +208,8 @@ class NJugs():
 
         if from_jar == 0:
             new_state[to_jar] = self.max_capacities[to_jar]
+        elif to_jar == -1:
+            new_state[from_jar] = 0
         else:
             new_state[from_jar] -= amount_to_move
             new_state[to_jar] += amount_to_move
@@ -213,6 +249,7 @@ def a_star_graph_search(start_state, lower_bound):
         visited.add(current_state.get_string())
 
         for next_state in njugs.get_next_states(current_state):
+
             if next_state.heuristic == np.inf:
                 visited.add(next_state.get_string())
                 del next_state
@@ -264,9 +301,17 @@ def main(path=None):
 
     global njugs
 
+    print("Jugs : ", jugs)
+    print("Target : ", target)
+
+
     if len(jugs) == 1:
         if target % jugs[0] != 0:
-            return [-1, "No Path to Display"]
+            print("Steps : ", -1)
+            print("No Path to Display")
+            print("---------------------------------------------------------------------------------------")
+            return
+            # return [-1, "No Path to Display"]
 
     njugs = NJugs(jug_capacities=jugs, target=target)
     init_state = State(water_state=njugs.jugs)
@@ -274,10 +319,21 @@ def main(path=None):
     lower_bound = target + sum(jugs)
     x = a_star_graph_search(init_state, lower_bound)
 
+    # if x is None:
+    #     return [-1, "No Path to Display"]
+    # else:
+    #     return [len(x) - 1, [i.get_string() for i in x]]
+
     if x is None:
-        return [-1, "No Path to Display"]
+        print("Steps : ", -1)
+        print("No Path to Display")
+        print("---------------------------------------------------------------------------------------")
     else:
-        return [len(x) - 1, [i.get_string() for i in x]]
+        print("Steps : ", len(x) - 1)
+        print("Path : ", [i.get_string() for i in x])
+        print("---------------------------------------------------------------------------------------")
 
 
 __name__ = "__main__"
+
+# print(main("Test Files/input5.txt"))
